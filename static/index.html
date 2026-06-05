@@ -126,6 +126,12 @@
   </div>
 
   <div id="sidebar">
+    <!-- Data quality panel -->
+    <div class="panel">
+      <div class="panel-title">Data Coverage</div>
+      <div id="quality-info" style="font-size:11px; color:var(--muted); line-height:1.7">—</div>
+    </div>
+
     <!-- Battery score panel -->
     <div class="panel">
       <div class="panel-title">Battery Score</div>
@@ -270,7 +276,26 @@ async function loadInstruments() {
     o.textContent = `${inst.symbol} (${inst.asset_class})`;
     sel.appendChild(o);
   });
-  if (list.length) loadBars();
+  if (list.length) { loadBars(); loadQuality(); }
+}
+
+// ── Data quality ───────────────────────────────────────────────────────────────
+async function loadQuality() {
+  const symbol = document.getElementById('sym-select').value;
+  try {
+    const r = await fetch(`${API}/quality/${symbol}`);
+    if (!r.ok) { document.getElementById('quality-info').textContent = 'N/A (equity)'; return; }
+    const q = await r.json();
+    const pct = q.expected_bars > 0 ? (q.total_bars / q.expected_bars * 100).toFixed(1) : '?';
+    const first = q.first_ts ? q.first_ts.slice(0, 10) : '—';
+    const last  = q.last_ts  ? q.last_ts.slice(0, 10)  : '—';
+    document.getElementById('quality-info').innerHTML =
+      `<b>${q.total_bars.toLocaleString()}</b> bars &nbsp;(${pct}%)<br>` +
+      `${first} → ${last}<br>` +
+      `Missing: ${q.missing_bars?.toLocaleString() ?? '—'}`;
+  } catch (_) {
+    document.getElementById('quality-info').textContent = '—';
+  }
 }
 
 // ── Bars + Volume ──────────────────────────────────────────────────────────────
@@ -304,6 +329,7 @@ async function loadBars() {
 
     mainChart.timeScale().fitContent();
     setStatus(`${symbol} ${tf.toUpperCase()} — ${data.length} bars`);
+    loadQuality();
   } catch (e) {
     setStatus(`Failed: ${e.message}`);
   }
@@ -361,9 +387,11 @@ function renderReport(r) {
   document.getElementById('regime-badge').textContent = r.regime.replace(/_/g, ' ');
 
   const icons = { bull: '▲', neutral: '─', bear: '▼' };
+  const sigOrder = { bull: 0, neutral: 1, bear: 2 };
   const list = document.getElementById('studies-list');
   list.innerHTML = '';
-  (r.studies || []).forEach(s => {
+  const sorted = [...(r.studies || [])].sort((a, b) => (sigOrder[a.signal] ?? 1) - (sigOrder[b.signal] ?? 1));
+  sorted.forEach(s => {
     const row  = document.createElement('div');  row.className = 'study-row';
     const icon = document.createElement('span'); icon.className = `study-icon ${s.signal}`; icon.textContent = icons[s.signal] || '─';
     const name = document.createElement('span'); name.className = 'study-name'; name.textContent = s.name;
@@ -458,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setDefaultDates();
   loadInstruments();
 
-  document.getElementById('sym-select').addEventListener('change', loadBars);
+  document.getElementById('sym-select').addEventListener('change', () => { loadBars(); loadQuality(); });
   document.getElementById('tf-select').addEventListener('change', loadBars);
   document.getElementById('analyze-btn').addEventListener('click', runAnalyze);
   document.getElementById('macro-select').addEventListener('change', e => loadMacro(e.target.value));
