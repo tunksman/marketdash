@@ -32,18 +32,19 @@
   .ctrl { display: flex; flex-direction: column; gap: 2px; }
   #analyze-btn { background: var(--accent); color: var(--text); border: none; padding: 6px 14px; font-family: var(--font); font-size: 12px; border-radius: 3px; cursor: pointer; }
   #analyze-btn:hover { background: #388bfd; }
-  #backfill-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); padding: 6px 10px; font-family: var(--font); font-size: 12px; border-radius: 3px; cursor: pointer; }
-  #backfill-btn:hover { border-color: var(--accent); color: var(--text); }
-  #backfill-btn.running { color: var(--bull); border-color: var(--bull); }
-  #status { color: var(--muted); font-size: 11px; margin-left: auto; }
+  .icon-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); padding: 6px 10px; font-family: var(--font); font-size: 12px; border-radius: 3px; cursor: pointer; }
+  .icon-btn:hover { border-color: var(--accent); color: var(--text); }
+  .icon-btn.running { color: var(--bull); border-color: var(--bull); }
+  #status { color: var(--muted); font-size: 11px; margin-left: auto; min-width: 180px; text-align: right; }
 
   /* ── Main layout ── */
   #main { display: flex; flex: 1; overflow: hidden; }
 
-  /* ── Chart ── */
-  #chart-wrap { flex: 1; position: relative; min-width: 0; }
-  #chart { width: 100%; height: 100%; }
-  #chart-info { position: absolute; top: 8px; left: 12px; font-size: 12px; color: var(--muted); pointer-events: none; }
+  /* ── Chart area ── */
+  #chart-wrap { flex: 1; position: relative; min-width: 0; display: flex; flex-direction: column; }
+  #chart { flex: 1; min-height: 0; }
+  #chart-info { position: absolute; top: 8px; left: 12px; font-size: 12px; color: var(--muted); pointer-events: none; z-index: 10; }
+  #macro-label { position: absolute; top: 28px; left: 12px; font-size: 11px; color: var(--neutral); pointer-events: none; z-index: 10; display: none; }
 
   /* ── Sidebar ── */
   #sidebar { width: 300px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
@@ -59,7 +60,6 @@
   .gauge-val { width: 36px; text-align: right; font-size: 12px; }
   .bull-bar { background: var(--bull); }
   .bear-bar { background: var(--bear); }
-  .neutral-bar { background: var(--neutral); }
 
   #regime-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: var(--border); color: var(--text); }
 
@@ -73,14 +73,11 @@
   .study-name { flex: 1; font-size: 11px; color: var(--muted); }
   .study-val { font-size: 11px; color: var(--text); white-space: nowrap; }
 
-  /* Macro mini chart placeholder */
-  #macro-select { width: 100%; margin-bottom: 8px; }
-  #macro-chart { width: 100%; height: 120px; }
+  /* Macro panel */
+  #macro-select { width: 100%; margin-bottom: 6px; }
+  #macro-seed-btn { width: 100%; margin-top: 6px; font-size: 11px; padding: 4px; }
 
-  /* Loading spinner */
   .loading { color: var(--muted); font-size: 11px; padding: 8px 0; }
-
-  /* Scrollbar */
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: var(--surface); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 </style>
 </head>
@@ -116,7 +113,7 @@
   </div>
 
   <button id="analyze-btn">Analyze</button>
-  <button id="backfill-btn" title="Start BTC backfill in server background">&#x21BB; Backfill</button>
+  <button id="backfill-btn" class="icon-btn" title="Start BTC backfill in server background">&#x21BB; Backfill</button>
   <span id="status"></span>
 </div>
 
@@ -124,11 +121,12 @@
   <div id="chart-wrap">
     <div id="chart"></div>
     <div id="chart-info"></div>
+    <div id="macro-label"></div>
   </div>
 
   <div id="sidebar">
-    <!-- Score panel -->
-    <div class="panel" id="score-panel">
+    <!-- Battery score panel -->
+    <div class="panel">
       <div class="panel-title">Battery Score</div>
       <div class="gauge-row">
         <span class="gauge-label">Momentum Intact</span>
@@ -157,40 +155,39 @@
       <div id="studies-list"><span class="loading">Click Analyze to run battery</span></div>
     </div>
 
-    <!-- Macro mini chart -->
+    <!-- Macro overlay panel -->
     <div class="panel">
       <div class="panel-title">Macro Overlay</div>
       <select id="macro-select">
-        <option value="">— select series —</option>
+        <option value="">— none —</option>
         <option value="DFF">Fed Funds Rate (DFF)</option>
         <option value="DGS10">10Y Yield (DGS10)</option>
         <option value="DGS2">2Y Yield (DGS2)</option>
+        <option value="T5YIE">5Y Breakeven Inflation</option>
         <option value="VIXCLS">VIX</option>
-        <option value="M2SL">M2 Money Supply</option>
         <option value="BAMLH0A0HYM2">HY Credit Spread</option>
+        <option value="M2SL">M2 Money Supply</option>
+        <option value="WALCL">Fed Balance Sheet</option>
         <option value="DTWEXBGS">USD Index</option>
         <option value="DCOILWTICO">WTI Crude</option>
         <option value="GOLDAMGBD228NLBM">Gold</option>
         <option value="SP500">S&amp;P 500</option>
         <option value="CPIAUCSL">CPI</option>
         <option value="PCEPILFE">Core PCE</option>
-        <option value="T5YIE">5Y Breakeven Inflation</option>
         <option value="UNRATE">Unemployment Rate</option>
-        <option value="WALCL">Fed Balance Sheet</option>
       </select>
-      <div id="macro-chart"></div>
+      <button id="macro-seed-btn" class="icon-btn">&#x21BB; Seed FRED macro</button>
     </div>
   </div>
 </div>
 
 <script>
-const API = '';  // same origin
+const API = '';
 
 // ── State ──────────────────────────────────────────────────────────────────────
-let mainChart, candleSeries, macroChart, macroLineSeries;
-let currentSymbol = null;
+let mainChart, candleSeries, volumeSeries, macroOverlaySeries;
 
-// ── Init chart ─────────────────────────────────────────────────────────────────
+// ── Chart init ─────────────────────────────────────────────────────────────────
 function initChart() {
   const wrap = document.getElementById('chart-wrap');
   mainChart = LightweightCharts.createChart(document.getElementById('chart'), {
@@ -200,39 +197,65 @@ function initChart() {
     grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
     rightPriceScale: { borderColor: '#30363d' },
+    leftPriceScale: { visible: false, borderColor: '#30363d' },
     timeScale: { borderColor: '#30363d', timeVisible: true, secondsVisible: false },
   });
+
+  // Candlestick — primary price scale (right)
   candleSeries = mainChart.addCandlestickSeries({
     upColor: '#3fb950', downColor: '#f85149',
     borderUpColor: '#3fb950', borderDownColor: '#f85149',
     wickUpColor: '#3fb950', wickDownColor: '#f85149',
+    priceScaleId: 'right',
   });
 
-  // Macro mini chart
-  macroChart = LightweightCharts.createChart(document.getElementById('macro-chart'), {
-    width: 276, height: 120,
-    layout: { background: { color: '#161b22' }, textColor: '#8b949e' },
-    grid: { vertLines: { color: 'transparent' }, horzLines: { color: '#21262d' } },
-    rightPriceScale: { borderColor: '#30363d', scaleMargins: { top: 0.1, bottom: 0.1 } },
-    timeScale: { borderColor: '#30363d', timeVisible: true },
-    handleScroll: false, handleScale: false,
+  // Volume histogram — overlay on right scale, pinned to bottom 18%
+  volumeSeries = mainChart.addHistogramSeries({
+    priceFormat: { type: 'volume' },
+    priceScaleId: 'vol',
   });
-  macroLineSeries = macroChart.addLineSeries({ color: '#58a6ff', lineWidth: 1 });
+  mainChart.priceScale('vol').applyOptions({
+    scaleMargins: { top: 0.82, bottom: 0 },
+    visible: false,
+  });
 
-  // Resize observer
+  // Macro overlay — left scale, occupies top 60% so it doesn't crowd volume
+  macroOverlaySeries = mainChart.addLineSeries({
+    color: '#58a6ff',
+    lineWidth: 1,
+    priceScaleId: 'left',
+    lastValueVisible: true,
+    priceLineVisible: false,
+    crosshairMarkerVisible: true,
+  });
+  mainChart.priceScale('left').applyOptions({
+    scaleMargins: { top: 0.05, bottom: 0.38 },
+    visible: false,  // shown only when macro is selected
+    borderColor: '#30363d',
+  });
+
+  // Resize
   new ResizeObserver(() => {
     mainChart.resize(wrap.clientWidth, wrap.clientHeight);
   }).observe(wrap);
 
   // Crosshair tooltip
   mainChart.subscribeCrosshairMove(p => {
-    if (!p.seriesData || !p.seriesData.size) return;
-    const d = p.seriesData.get(candleSeries);
-    if (!d) return;
-    document.getElementById('chart-info').textContent =
-      `O: ${d.open?.toFixed(2)}  H: ${d.high?.toFixed(2)}  L: ${d.low?.toFixed(2)}  C: ${d.close?.toFixed(2)}`;
+    if (!p.seriesData) return;
+    const c = p.seriesData.get(candleSeries);
+    if (c) {
+      document.getElementById('chart-info').textContent =
+        `O: ${fmt(c.open)}  H: ${fmt(c.high)}  L: ${fmt(c.low)}  C: ${fmt(c.close)}`;
+    }
+    const m = p.seriesData.get(macroOverlaySeries);
+    if (m) {
+      const lbl = document.getElementById('macro-label');
+      lbl.textContent = `${document.getElementById('macro-select').value}: ${m.value?.toFixed(4)}`;
+    }
   });
 }
+
+const fmt = v => v == null ? '—' : v >= 1000 ? v.toLocaleString(undefined, {maximumFractionDigits: 2}) : v.toFixed(2);
 
 // ── Instruments ────────────────────────────────────────────────────────────────
 async function loadInstruments() {
@@ -249,29 +272,65 @@ async function loadInstruments() {
   if (list.length) loadBars();
 }
 
-// ── Bars ───────────────────────────────────────────────────────────────────────
+// ── Bars + Volume ──────────────────────────────────────────────────────────────
 async function loadBars() {
   const symbol = document.getElementById('sym-select').value;
-  const tf = document.getElementById('tf-select').value;
-  const start = document.getElementById('date-start').value;
-  const end = document.getElementById('date-end').value;
+  const tf     = document.getElementById('tf-select').value;
+  const start  = document.getElementById('date-start').value;
+  const end    = document.getElementById('date-end').value;
 
-  currentSymbol = symbol;
   setStatus(`Loading ${symbol} ${tf.toUpperCase()}…`);
-
   const params = new URLSearchParams({ timeframe: tf });
   if (start) params.set('start', start);
-  if (end) params.set('end', end);
+  if (end)   params.set('end', end);
 
   try {
     const r = await fetch(`${API}/bars/${symbol}?${params}`);
     if (!r.ok) { setStatus(`Error: ${await r.text()}`); return; }
     const data = await r.json();
-    candleSeries.setData(data);
+
+    // Candles
+    candleSeries.setData(data.map(b => ({
+      time: b.time, open: b.open, high: b.high, low: b.low, close: b.close,
+    })));
+
+    // Volume histogram — green/red based on up/down candle
+    volumeSeries.setData(data.map(b => ({
+      time: b.time,
+      value: b.volume || 0,
+      color: b.close >= b.open ? 'rgba(63,185,80,0.4)' : 'rgba(248,81,73,0.4)',
+    })));
+
     mainChart.timeScale().fitContent();
     setStatus(`${symbol} ${tf.toUpperCase()} — ${data.length} bars`);
   } catch (e) {
     setStatus(`Failed: ${e.message}`);
+  }
+}
+
+// ── Macro overlay on main chart ────────────────────────────────────────────────
+async function loadMacro(seriesId) {
+  const lbl = document.getElementById('macro-label');
+
+  if (!seriesId) {
+    macroOverlaySeries.setData([]);
+    mainChart.priceScale('left').applyOptions({ visible: false });
+    lbl.style.display = 'none';
+    return;
+  }
+
+  setStatus(`Loading macro: ${seriesId}…`);
+  try {
+    const r = await fetch(`${API}/macro/${seriesId}`);
+    const data = await r.json();
+    if (!data.length) { setStatus(`No data for ${seriesId}`); return; }
+    macroOverlaySeries.setData(data.map(d => ({ time: d.time, value: d.value })));
+    mainChart.priceScale('left').applyOptions({ visible: true });
+    lbl.style.display = 'block';
+    lbl.textContent = seriesId;
+    setStatus(`Macro: ${seriesId} — ${data.length} obs`);
+  } catch (e) {
+    setStatus(`Macro failed: ${e.message}`);
   }
 }
 
@@ -280,12 +339,10 @@ async function runAnalyze() {
   const symbol = document.getElementById('sym-select').value;
   setStatus(`Running battery for ${symbol}…`);
   document.getElementById('studies-list').innerHTML = '<span class="loading">Running…</span>';
-
   try {
     const r = await fetch(`${API}/analyze/${symbol}`);
     if (!r.ok) { setStatus(`Analyze error: ${await r.text()}`); return; }
-    const report = await r.json();
-    renderReport(report);
+    renderReport(await r.json());
     setStatus(`${symbol} — battery complete`);
   } catch (e) {
     setStatus(`Analyze failed: ${e.message}`);
@@ -293,63 +350,90 @@ async function runAnalyze() {
 }
 
 function renderReport(r) {
-  // Gauges
   const pct = v => `${Math.round(v * 100)}%`;
   document.getElementById('mom-bar').style.width = pct(r.momentum_intact_score);
-  document.getElementById('mom-val').textContent = pct(r.momentum_intact_score);
-  document.getElementById('ext-bar').style.width = pct(r.extension_score);
-  document.getElementById('ext-val').textContent = pct(r.extension_score);
-  const bullFrac = r.bull_pct / 100;
-  document.getElementById('bull-bar').style.width = pct(bullFrac);
+  document.getElementById('mom-val').textContent  = pct(r.momentum_intact_score);
+  document.getElementById('ext-bar').style.width  = pct(r.extension_score);
+  document.getElementById('ext-val').textContent  = pct(r.extension_score);
+  document.getElementById('bull-bar').style.width = `${r.bull_pct}%`;
   document.getElementById('bull-val').textContent = `${r.bull_pct.toFixed(0)}/${r.bear_pct.toFixed(0)}`;
-  document.getElementById('regime-badge').textContent = r.regime.replace('_', ' ');
+  document.getElementById('regime-badge').textContent = r.regime.replace(/_/g, ' ');
 
-  // Studies
   const icons = { bull: '▲', neutral: '─', bear: '▼' };
   const list = document.getElementById('studies-list');
   list.innerHTML = '';
   (r.studies || []).forEach(s => {
-    const row = document.createElement('div');
-    row.className = 'study-row';
-
-    const icon = document.createElement('span');
-    icon.className = `study-icon ${s.signal}`;
-    icon.textContent = icons[s.signal] || '─';
-
-    const name = document.createElement('span');
-    name.className = 'study-name';
-    name.textContent = s.name;
-
-    const val = document.createElement('span');
-    val.className = 'study-val';
+    const row  = document.createElement('div');  row.className = 'study-row';
+    const icon = document.createElement('span'); icon.className = `study-icon ${s.signal}`; icon.textContent = icons[s.signal] || '─';
+    const name = document.createElement('span'); name.className = 'study-name'; name.textContent = s.name;
+    const val  = document.createElement('span'); val.className = 'study-val';
     let v = s.value;
-    if (v === null || v === undefined) v = 'N/A';
-    else if (typeof v === 'object') v = JSON.stringify(v).slice(0, 20);
-    else if (typeof v === 'number') v = v.toFixed ? v.toFixed(2) : v;
+    if (v == null) v = 'N/A';
+    else if (typeof v === 'object') v = JSON.stringify(v).slice(0, 18);
+    else if (typeof v === 'number') v = v.toFixed(2);
     val.textContent = v;
-
-    row.appendChild(icon); row.appendChild(name); row.appendChild(val);
+    row.append(icon, name, val);
     list.appendChild(row);
   });
 }
 
-// ── Macro overlay ──────────────────────────────────────────────────────────────
-async function loadMacro(seriesId) {
-  if (!seriesId) { macroLineSeries.setData([]); return; }
-  const r = await fetch(`${API}/macro/${seriesId}`);
-  const data = await r.json();
-  macroLineSeries.setData(data);
-  macroChart.timeScale().fitContent();
+// ── Backfill ───────────────────────────────────────────────────────────────────
+async function triggerBackfill() {
+  const r = await fetch(`${API}/backfill/start`, { method: 'POST' });
+  const d = await r.json();
+  setStatus(d.status === 'started' ? 'Backfill started…' : 'Backfill already running');
+  pollBackfillStatus();
+}
+
+async function pollBackfillStatus() {
+  try {
+    const d = await (await fetch(`${API}/backfill/status`)).json();
+    const btn = document.getElementById('backfill-btn');
+    if (d.running) {
+      btn.classList.add('running');
+      btn.title = (d.recent_log || []).slice(-3).join('\n');
+      setTimeout(pollBackfillStatus, 10000);
+    } else {
+      btn.classList.remove('running');
+      btn.title = 'Start BTC backfill';
+    }
+  } catch (_) {}
+}
+
+// ── Macro seed ─────────────────────────────────────────────────────────────────
+async function triggerMacroSeed() {
+  const btn = document.getElementById('macro-seed-btn');
+  const r = await fetch(`${API}/seed/macro`, { method: 'POST' });
+  const d = await r.json();
+  setStatus(d.status === 'started' ? 'FRED macro seed started…' : 'Macro seed already running');
+  btn.classList.add('running');
+  pollMacroStatus();
+}
+
+async function pollMacroStatus() {
+  try {
+    const d = await (await fetch(`${API}/seed/macro/status`)).json();
+    const btn = document.getElementById('macro-seed-btn');
+    if (d.running) {
+      btn.title = (d.log || []).slice(-3).join('\n');
+      setTimeout(pollMacroStatus, 5000);
+    } else {
+      btn.classList.remove('running');
+      if (d.failed && d.failed.length)
+        setStatus(`Macro done — failed: ${d.failed.join(', ')}`);
+      else if (d.log.length)
+        setStatus('Macro seed complete');
+    }
+  } catch (_) {}
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
 function setDefaultDates() {
-  const end = new Date();
-  const start = new Date();
+  const end = new Date(), start = new Date();
   start.setFullYear(start.getFullYear() - 2);
-  document.getElementById('date-end').value = end.toISOString().slice(0, 10);
+  document.getElementById('date-end').value   = end.toISOString().slice(0, 10);
   document.getElementById('date-start').value = start.toISOString().slice(0, 10);
 }
 
@@ -364,31 +448,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('analyze-btn').addEventListener('click', runAnalyze);
   document.getElementById('macro-select').addEventListener('change', e => loadMacro(e.target.value));
   document.getElementById('backfill-btn').addEventListener('click', triggerBackfill);
+  document.getElementById('macro-seed-btn').addEventListener('click', triggerMacroSeed);
   pollBackfillStatus();
+  pollMacroStatus();
 });
-
-async function triggerBackfill() {
-  const r = await fetch(`${API}/backfill/start`, { method: 'POST' });
-  const d = await r.json();
-  setStatus(d.status === 'started' ? 'Backfill started in server background…' : 'Backfill already running');
-  pollBackfillStatus();
-}
-
-async function pollBackfillStatus() {
-  try {
-    const r = await fetch(`${API}/backfill/status`);
-    const d = await r.json();
-    const btn = document.getElementById('backfill-btn');
-    if (d.running) {
-      btn.classList.add('running');
-      btn.title = d.recent_log.slice(-3).join('\n');
-      setTimeout(pollBackfillStatus, 10000);
-    } else {
-      btn.classList.remove('running');
-      btn.title = 'Start BTC backfill in server background';
-    }
-  } catch (_) {}
-}
 </script>
 </body>
 </html>

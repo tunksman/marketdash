@@ -86,6 +86,7 @@ def bars_endpoint(
             "high": b["high"],
             "low": b["low"],
             "close": b["close"],
+            "volume": b.get("volume", 0),
         })
     return result
 
@@ -199,4 +200,60 @@ def backfill_status():
     return {
         "running": _backfill_state["running"],
         "recent_log": _backfill_state["log"][-20:],
+    }
+
+
+# ── Macro seed (runs in-process, same as backfill) ────────────────────────────
+
+_macro_state: dict = {"running": False, "log": [], "failed": []}
+_macro_lock = threading.Lock()
+
+
+def _run_macro_thread():
+    from .config import MACRO_SERIES
+    from .db import connect as _connect
+    from .sources.fred import FredSource
+    import io, contextlib
+
+    _macro_state["running"] = True
+    _macro_state["log"] = []
+    _macro_state["failed"] = []
+    src = FredSource()
+    con = _connect()
+
+    for series_id, name, *_ in MACRO_SERIES:
+        msg = f"  pulling {series_id} ({name}) ... "
+        try:
+            obs = list(src.iter_observations(series_id))
+            con.executemany("""
+                INSERT INTO macro_observation (series_id, ts, value)
+                VALUES (?, ?, ?)
+                ON CONFLICT (series_id, ts) DO NOTHING
+            """, obs)
+            _macro_state["log"].append(msg + f"{len(obs)} rows")
+        except Exception as e:
+            _macro_state["log"].append(msg + f"SKIP ({e})")
+            _macro_state["failed"].append(series_id)
+
+    con.close()
+    _macro_state["running"] = False
+
+
+@app.post("/seed/macro")
+def seed_macro_endpoint():
+    """Seed/refresh all 15 FRED macro series in a background thread."""
+    with _macro_lock:
+        if _macro_state["running"]:
+            return {"status": "already_running"}
+        t = threading.Thread(target=_run_macro_thread, daemon=True)
+        t.start()
+    return {"status": "started"}
+
+
+@app.get("/seed/macro/status")
+def seed_macro_status():
+    return {
+        "running": _macro_state["running"],
+        "log": _macro_state["log"][-20:],
+        "failed": _macro_state["failed"],
     }
