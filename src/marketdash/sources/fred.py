@@ -30,13 +30,19 @@ class FredSource(MacroSource):
                 r.raise_for_status()
                 break
             except RuntimeError:
-                raise  # non-retryable
+                raise  # non-retryable (e.g. 404)
             except (requests.Timeout, requests.ConnectionError) as e:
                 last_err = e
                 if attempt < _MAX_RETRIES - 1:
                     time.sleep(_RETRY_DELAY)
             except requests.HTTPError as e:
-                raise RuntimeError(f"FRED HTTP error for {series_id}: {e}") from e
+                code = e.response.status_code if e.response is not None else 0
+                if code in (429, 500, 502, 503, 504):  # transient server errors: retry
+                    last_err = e
+                    if attempt < _MAX_RETRIES - 1:
+                        time.sleep(_RETRY_DELAY * 2)  # longer delay for server errors
+                else:
+                    raise RuntimeError(f"FRED HTTP error for {series_id}: {e}") from e
         else:
             raise RuntimeError(
                 f"FRED fetch failed for {series_id} after {_MAX_RETRIES} attempts: {last_err}"
