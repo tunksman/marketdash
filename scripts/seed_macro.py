@@ -19,11 +19,13 @@ def seed_macro(verbose: bool = True) -> None:
     src = FredSource()
 
     failed = []
-    for series_id, name, *_ in MACRO_SERIES:
+    for row in MACRO_SERIES:
+        series_id, name = row[0], row[1]
+        freq = row[4] if len(row) > 4 else "D"
         if verbose:
             print(f"  pulling {series_id} ({name}) ...", end=" ", flush=True)
         try:
-            obs = list(src.iter_observations(series_id))
+            obs = list(src.iter_observations(series_id, frequency=freq))
         except Exception as e:
             if verbose:
                 print(f"SKIP ({e})")

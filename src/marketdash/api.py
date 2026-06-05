@@ -268,12 +268,14 @@ def _run_macro_thread():
     src = FredSource()
     con = _connect()
 
-    for i, (series_id, name, *_) in enumerate(MACRO_SERIES):
+    for i, row in enumerate(MACRO_SERIES):
+        series_id, name = row[0], row[1]
+        freq = row[4] if len(row) > 4 else "D"  # config tuple: (id, name, group, source, freq, unit)
         if i > 0:
             _time.sleep(3)  # polite inter-series delay to avoid FRED rate limits
         msg = f"  pulling {series_id} ({name}) ... "
         try:
-            obs = list(src.iter_observations(series_id))
+            obs = list(src.iter_observations(series_id, frequency=freq))
             con.executemany("""
                 INSERT INTO macro_observation (series_id, ts, value)
                 VALUES (?, ?, ?)
