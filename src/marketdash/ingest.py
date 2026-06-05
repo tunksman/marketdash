@@ -54,7 +54,18 @@ def _insert_bars(bars: list[tuple]) -> int:
 
 
 def backfill_btc(symbol: str = "BTCUSDT", instrument_id: int = 1,
-                 verbose: bool = True, max_months: int | None = None) -> None:
+                 verbose: bool = True, max_months: int | None = None,
+                 log: list | None = None) -> None:
+    """
+    log: optional list; if given, append progress strings to it in real-time
+         (used by the API background thread for live status).
+    """
+    def _emit(msg: str):
+        if verbose:
+            print(msg, flush=True)
+        if log is not None:
+            log.append(msg)
+
     init_db()
 
     now = datetime.now(timezone.utc)
@@ -65,28 +76,23 @@ def backfill_btc(symbol: str = "BTCUSDT", instrument_id: int = 1,
     while (year, month) < (current_year, current_month):
         period = f"{year}-{month:02d}"
         if _already_ingested("binance", symbol, "1m", period):
-            if verbose:
-                print(f"  skip {period} (already loaded)")
+            _emit(f"  skip {period} (already loaded)")
         else:
-            if verbose:
-                print(f"  fetch {period} ...", end=" ", flush=True)
+            _emit(f"  fetch {period} ...")
             # Download happens outside DB lock window
             zip_path, checksum_ok = fetch_month(symbol, year, month)
             if zip_path is None:
-                if verbose:
-                    print("FAILED (download error)")
+                _emit(f"  {period} FAILED (download error)")
                 _log_ingest("binance", symbol, "1m", period, 0, False, "error")
             else:
                 bars = read_zip_bars(zip_path, instrument_id)
                 n = _insert_bars(bars)
                 _log_ingest("binance", symbol, "1m", period, n, checksum_ok, "ok")
-                if verbose:
-                    print(f"{n} bars {'(checksum ok)' if checksum_ok else '(checksum SKIP)'}")
+                _emit(f"  {period} {n} bars {'(checksum ok)' if checksum_ok else '(checksum SKIP)'}")
 
         months_processed += 1
         if max_months is not None and months_processed >= max_months:
-            if verbose:
-                print(f"  (stopping after {max_months} month(s) — smoke mode)")
+            _emit(f"  (stopping after {max_months} month(s) — smoke mode)")
             break
 
         month += 1
@@ -97,7 +103,7 @@ def backfill_btc(symbol: str = "BTCUSDT", instrument_id: int = 1,
     if max_months is not None:
         # Smoke mode: skip daily dumps and bar_1d refresh
         _refresh_bar_1d_from_1m(instrument_id, symbol, verbose)
-        print("BTC backfill complete.")
+        _emit("BTC backfill complete.")
         return
 
     # Current month: use daily dumps
@@ -106,22 +112,18 @@ def backfill_btc(symbol: str = "BTCUSDT", instrument_id: int = 1,
     while day < today:
         date_str = day.strftime("%Y-%m-%d")
         if _already_ingested("binance", symbol, "1m", date_str):
-            if verbose:
-                print(f"  skip {date_str} (already loaded)")
+            _emit(f"  skip {date_str} (already loaded)")
         else:
-            if verbose:
-                print(f"  fetch daily {date_str} ...", end=" ", flush=True)
+            _emit(f"  fetch daily {date_str} ...")
             zip_path, checksum_ok = fetch_day(symbol, date_str)
             if zip_path is None:
-                if verbose:
-                    print("FAILED")
+                _emit(f"  {date_str} FAILED")
                 _log_ingest("binance", symbol, "1m", date_str, 0, False, "error")
             else:
                 bars = read_zip_bars(zip_path, instrument_id)
                 n = _insert_bars(bars)
                 _log_ingest("binance", symbol, "1m", date_str, n, checksum_ok, "ok")
-                if verbose:
-                    print(f"{n} bars")
+                _emit(f"  {date_str} {n} bars")
         day += timedelta(days=1)
 
     _refresh_bar_1d_from_1m(instrument_id, symbol, verbose)

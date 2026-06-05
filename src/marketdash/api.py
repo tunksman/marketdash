@@ -169,15 +169,11 @@ def _jsonify(obj):
 
 def _run_backfill_thread():
     from .ingest import backfill_btc as _backfill
-    import io, contextlib
 
     _backfill_state["running"] = True
     _backfill_state["log"] = []
-    buf = io.StringIO()
     try:
-        with contextlib.redirect_stdout(buf):
-            _backfill()
-        _backfill_state["log"] = buf.getvalue().splitlines()
+        _backfill(log=_backfill_state["log"], verbose=False)
     except Exception as e:
         _backfill_state["log"].append(f"ERROR: {e}")
     finally:
@@ -197,9 +193,11 @@ def backfill_start():
 
 @app.get("/backfill/status")
 def backfill_status():
+    log = _backfill_state["log"]
     return {
         "running": _backfill_state["running"],
-        "recent_log": _backfill_state["log"][-20:],
+        "total_periods": len(log),
+        "recent_log": log[-30:],
     }
 
 
@@ -220,6 +218,17 @@ def _run_update_thread():
         _update_state["result"] = {"error": str(e)}
     finally:
         _update_state["running"] = False
+
+
+@app.post("/refresh/bar1d")
+def refresh_bar1d_endpoint():
+    """Re-aggregate bar_1d from bar_1m for BTC. Safe to call while backfill is running."""
+    def _run():
+        from .ingest import _refresh_bar_1d_from_1m
+        _refresh_bar_1d_from_1m(1, "BTCUSDT", verbose=False)
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return {"status": "started"}
 
 
 @app.post("/update")

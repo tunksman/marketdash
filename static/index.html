@@ -114,6 +114,7 @@
 
   <button id="analyze-btn">Analyze</button>
   <button id="backfill-btn" class="icon-btn" title="Start BTC backfill in server background">&#x21BB; Backfill</button>
+  <button id="refresh1d-btn" class="icon-btn" title="Re-aggregate 1D bars from 1m data">&#x21BB; 1D</button>
   <span id="status"></span>
 </div>
 
@@ -391,11 +392,14 @@ async function pollBackfillStatus() {
     const btn = document.getElementById('backfill-btn');
     if (d.running) {
       btn.classList.add('running');
-      btn.title = (d.recent_log || []).slice(-3).join('\n');
-      setTimeout(pollBackfillStatus, 10000);
+      const last = (d.recent_log || []).slice(-1)[0] || '';
+      btn.title = last;
+      setStatus(`Backfill: ${d.total_periods || 0} periods done — ${last.slice(0, 60)}`);
+      setTimeout(pollBackfillStatus, 8000);
     } else {
       btn.classList.remove('running');
-      btn.title = 'Start BTC backfill';
+      if (d.total_periods > 0)
+        btn.title = `Last run: ${d.total_periods} periods`;
     }
   } catch (_) {}
 }
@@ -427,6 +431,17 @@ async function pollMacroStatus() {
   } catch (_) {}
 }
 
+// ── 1D refresh ─────────────────────────────────────────────────────────────────
+async function triggerRefresh1d() {
+  setStatus('Re-aggregating 1D bars from 1m data…');
+  const r = await fetch(`${API}/refresh/bar1d`, { method: 'POST' });
+  const d = await r.json();
+  if (d.status === 'started') {
+    // Wait a moment then reload bars
+    setTimeout(() => { loadBars(); setStatus('1D bars refreshed'); }, 8000);
+  }
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
@@ -448,6 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('analyze-btn').addEventListener('click', runAnalyze);
   document.getElementById('macro-select').addEventListener('change', e => loadMacro(e.target.value));
   document.getElementById('backfill-btn').addEventListener('click', triggerBackfill);
+  document.getElementById('refresh1d-btn').addEventListener('click', triggerRefresh1d);
   document.getElementById('macro-seed-btn').addEventListener('click', triggerMacroSeed);
   pollBackfillStatus();
   pollMacroStatus();
