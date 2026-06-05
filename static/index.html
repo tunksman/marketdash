@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>marketdash</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #30363d;
+    --text:      #e6edf3;
+    --muted:     #8b949e;
+    --bull:      #3fb950;
+    --bear:      #f85149;
+    --neutral:   #58a6ff;
+    --accent:    #1f6feb;
+    --font:      'Courier New', monospace;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Header ── */
+  #header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+  #header h1 { font-size: 15px; color: var(--accent); letter-spacing: 2px; margin-right: 8px; }
+  select, input[type=date] { background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 4px 8px; font-family: var(--font); font-size: 12px; border-radius: 3px; cursor: pointer; }
+  select:focus, input:focus { outline: none; border-color: var(--accent); }
+  label { color: var(--muted); font-size: 11px; }
+  .ctrl { display: flex; flex-direction: column; gap: 2px; }
+  #analyze-btn { background: var(--accent); color: var(--text); border: none; padding: 6px 14px; font-family: var(--font); font-size: 12px; border-radius: 3px; cursor: pointer; }
+  #analyze-btn:hover { background: #388bfd; }
+  #backfill-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); padding: 6px 10px; font-family: var(--font); font-size: 12px; border-radius: 3px; cursor: pointer; }
+  #backfill-btn:hover { border-color: var(--accent); color: var(--text); }
+  #backfill-btn.running { color: var(--bull); border-color: var(--bull); }
+  #status { color: var(--muted); font-size: 11px; margin-left: auto; }
+
+  /* ── Main layout ── */
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Chart ── */
+  #chart-wrap { flex: 1; position: relative; min-width: 0; }
+  #chart { width: 100%; height: 100%; }
+  #chart-info { position: absolute; top: 8px; left: 12px; font-size: 12px; color: var(--muted); pointer-events: none; }
+
+  /* ── Sidebar ── */
+  #sidebar { width: 300px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+
+  .panel { border-bottom: 1px solid var(--border); padding: 12px; }
+  .panel-title { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+
+  /* Score gauges */
+  .gauge-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .gauge-label { width: 110px; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .gauge-bar-wrap { flex: 1; background: var(--border); height: 8px; border-radius: 4px; overflow: hidden; }
+  .gauge-bar { height: 100%; border-radius: 4px; transition: width 0.4s; }
+  .gauge-val { width: 36px; text-align: right; font-size: 12px; }
+  .bull-bar { background: var(--bull); }
+  .bear-bar { background: var(--bear); }
+  .neutral-bar { background: var(--neutral); }
+
+  #regime-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: var(--border); color: var(--text); }
+
+  /* Studies table */
+  #studies-list { display: flex; flex-direction: column; gap: 3px; }
+  .study-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
+  .study-icon { font-size: 10px; flex-shrink: 0; width: 12px; }
+  .study-icon.bull { color: var(--bull); }
+  .study-icon.bear { color: var(--bear); }
+  .study-icon.neutral { color: var(--muted); }
+  .study-name { flex: 1; font-size: 11px; color: var(--muted); }
+  .study-val { font-size: 11px; color: var(--text); white-space: nowrap; }
+
+  /* Macro mini chart placeholder */
+  #macro-select { width: 100%; margin-bottom: 8px; }
+  #macro-chart { width: 100%; height: 120px; }
+
+  /* Loading spinner */
+  .loading { color: var(--muted); font-size: 11px; padding: 8px 0; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: var(--surface); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>MARKETDASH</h1>
+
+  <div class="ctrl">
+    <label>Symbol</label>
+    <select id="sym-select"><option>Loading…</option></select>
+  </div>
+
+  <div class="ctrl">
+    <label>Timeframe</label>
+    <select id="tf-select">
+      <option value="1d">1D</option>
+      <option value="4h">4H</option>
+      <option value="1h">1H</option>
+      <option value="15m">15m</option>
+      <option value="5m">5m</option>
+    </select>
+  </div>
+
+  <div class="ctrl">
+    <label>From</label>
+    <input type="date" id="date-start">
+  </div>
+
+  <div class="ctrl">
+    <label>To</label>
+    <input type="date" id="date-end">
+  </div>
+
+  <button id="analyze-btn">Analyze</button>
+  <button id="backfill-btn" title="Start BTC backfill in server background">&#x21BB; Backfill</button>
+  <span id="status"></span>
+</div>
+
+<div id="main">
+  <div id="chart-wrap">
+    <div id="chart"></div>
+    <div id="chart-info"></div>
+  </div>
+
+  <div id="sidebar">
+    <!-- Score panel -->
+    <div class="panel" id="score-panel">
+      <div class="panel-title">Battery Score</div>
+      <div class="gauge-row">
+        <span class="gauge-label">Momentum Intact</span>
+        <div class="gauge-bar-wrap"><div class="gauge-bar bull-bar" id="mom-bar" style="width:0%"></div></div>
+        <span class="gauge-val" id="mom-val">—</span>
+      </div>
+      <div class="gauge-row">
+        <span class="gauge-label">Extension Risk</span>
+        <div class="gauge-bar-wrap"><div class="gauge-bar bear-bar" id="ext-bar" style="width:0%"></div></div>
+        <span class="gauge-val" id="ext-val">—</span>
+      </div>
+      <div class="gauge-row">
+        <span class="gauge-label">Bull / Bear</span>
+        <div class="gauge-bar-wrap"><div class="gauge-bar bull-bar" id="bull-bar" style="width:0%"></div></div>
+        <span class="gauge-val" id="bull-val">—</span>
+      </div>
+      <div style="margin-top:8px">
+        <span class="gauge-label">Regime</span>
+        <span id="regime-badge">—</span>
+      </div>
+    </div>
+
+    <!-- Studies panel -->
+    <div class="panel" style="flex:1">
+      <div class="panel-title">Studies</div>
+      <div id="studies-list"><span class="loading">Click Analyze to run battery</span></div>
+    </div>
+
+    <!-- Macro mini chart -->
+    <div class="panel">
+      <div class="panel-title">Macro Overlay</div>
+      <select id="macro-select">
+        <option value="">— select series —</option>
+        <option value="DFF">Fed Funds Rate (DFF)</option>
+        <option value="DGS10">10Y Yield (DGS10)</option>
+        <option value="DGS2">2Y Yield (DGS2)</option>
+        <option value="VIXCLS">VIX</option>
+        <option value="M2SL">M2 Money Supply</option>
+        <option value="BAMLH0A0HYM2">HY Credit Spread</option>
+        <option value="DTWEXBGS">USD Index</option>
+        <option value="DCOILWTICO">WTI Crude</option>
+        <option value="GOLDAMGBD228NLBM">Gold</option>
+        <option value="SP500">S&amp;P 500</option>
+        <option value="CPIAUCSL">CPI</option>
+        <option value="PCEPILFE">Core PCE</option>
+        <option value="T5YIE">5Y Breakeven Inflation</option>
+        <option value="UNRATE">Unemployment Rate</option>
+        <option value="WALCL">Fed Balance Sheet</option>
+      </select>
+      <div id="macro-chart"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';  // same origin
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let mainChart, candleSeries, macroChart, macroLineSeries;
+let currentSymbol = null;
+
+// ── Init chart ─────────────────────────────────────────────────────────────────
+function initChart() {
+  const wrap = document.getElementById('chart-wrap');
+  mainChart = LightweightCharts.createChart(document.getElementById('chart'), {
+    width: wrap.clientWidth,
+    height: wrap.clientHeight,
+    layout: { background: { color: '#0d1117' }, textColor: '#8b949e' },
+    grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: '#30363d' },
+    timeScale: { borderColor: '#30363d', timeVisible: true, secondsVisible: false },
+  });
+  candleSeries = mainChart.addCandlestickSeries({
+    upColor: '#3fb950', downColor: '#f85149',
+    borderUpColor: '#3fb950', borderDownColor: '#f85149',
+    wickUpColor: '#3fb950', wickDownColor: '#f85149',
+  });
+
+  // Macro mini chart
+  macroChart = LightweightCharts.createChart(document.getElementById('macro-chart'), {
+    width: 276, height: 120,
+    layout: { background: { color: '#161b22' }, textColor: '#8b949e' },
+    grid: { vertLines: { color: 'transparent' }, horzLines: { color: '#21262d' } },
+    rightPriceScale: { borderColor: '#30363d', scaleMargins: { top: 0.1, bottom: 0.1 } },
+    timeScale: { borderColor: '#30363d', timeVisible: true },
+    handleScroll: false, handleScale: false,
+  });
+  macroLineSeries = macroChart.addLineSeries({ color: '#58a6ff', lineWidth: 1 });
+
+  // Resize observer
+  new ResizeObserver(() => {
+    mainChart.resize(wrap.clientWidth, wrap.clientHeight);
+  }).observe(wrap);
+
+  // Crosshair tooltip
+  mainChart.subscribeCrosshairMove(p => {
+    if (!p.seriesData || !p.seriesData.size) return;
+    const d = p.seriesData.get(candleSeries);
+    if (!d) return;
+    document.getElementById('chart-info').textContent =
+      `O: ${d.open?.toFixed(2)}  H: ${d.high?.toFixed(2)}  L: ${d.low?.toFixed(2)}  C: ${d.close?.toFixed(2)}`;
+  });
+}
+
+// ── Instruments ────────────────────────────────────────────────────────────────
+async function loadInstruments() {
+  const r = await fetch(`${API}/instruments`);
+  const list = await r.json();
+  const sel = document.getElementById('sym-select');
+  sel.innerHTML = '';
+  list.forEach(inst => {
+    const o = document.createElement('option');
+    o.value = inst.symbol;
+    o.textContent = `${inst.symbol} (${inst.asset_class})`;
+    sel.appendChild(o);
+  });
+  if (list.length) loadBars();
+}
+
+// ── Bars ───────────────────────────────────────────────────────────────────────
+async function loadBars() {
+  const symbol = document.getElementById('sym-select').value;
+  const tf = document.getElementById('tf-select').value;
+  const start = document.getElementById('date-start').value;
+  const end = document.getElementById('date-end').value;
+
+  currentSymbol = symbol;
+  setStatus(`Loading ${symbol} ${tf.toUpperCase()}…`);
+
+  const params = new URLSearchParams({ timeframe: tf });
+  if (start) params.set('start', start);
+  if (end) params.set('end', end);
+
+  try {
+    const r = await fetch(`${API}/bars/${symbol}?${params}`);
+    if (!r.ok) { setStatus(`Error: ${await r.text()}`); return; }
+    const data = await r.json();
+    candleSeries.setData(data);
+    mainChart.timeScale().fitContent();
+    setStatus(`${symbol} ${tf.toUpperCase()} — ${data.length} bars`);
+  } catch (e) {
+    setStatus(`Failed: ${e.message}`);
+  }
+}
+
+// ── Analyze ────────────────────────────────────────────────────────────────────
+async function runAnalyze() {
+  const symbol = document.getElementById('sym-select').value;
+  setStatus(`Running battery for ${symbol}…`);
+  document.getElementById('studies-list').innerHTML = '<span class="loading">Running…</span>';
+
+  try {
+    const r = await fetch(`${API}/analyze/${symbol}`);
+    if (!r.ok) { setStatus(`Analyze error: ${await r.text()}`); return; }
+    const report = await r.json();
+    renderReport(report);
+    setStatus(`${symbol} — battery complete`);
+  } catch (e) {
+    setStatus(`Analyze failed: ${e.message}`);
+  }
+}
+
+function renderReport(r) {
+  // Gauges
+  const pct = v => `${Math.round(v * 100)}%`;
+  document.getElementById('mom-bar').style.width = pct(r.momentum_intact_score);
+  document.getElementById('mom-val').textContent = pct(r.momentum_intact_score);
+  document.getElementById('ext-bar').style.width = pct(r.extension_score);
+  document.getElementById('ext-val').textContent = pct(r.extension_score);
+  const bullFrac = r.bull_pct / 100;
+  document.getElementById('bull-bar').style.width = pct(bullFrac);
+  document.getElementById('bull-val').textContent = `${r.bull_pct.toFixed(0)}/${r.bear_pct.toFixed(0)}`;
+  document.getElementById('regime-badge').textContent = r.regime.replace('_', ' ');
+
+  // Studies
+  const icons = { bull: '▲', neutral: '─', bear: '▼' };
+  const list = document.getElementById('studies-list');
+  list.innerHTML = '';
+  (r.studies || []).forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'study-row';
+
+    const icon = document.createElement('span');
+    icon.className = `study-icon ${s.signal}`;
+    icon.textContent = icons[s.signal] || '─';
+
+    const name = document.createElement('span');
+    name.className = 'study-name';
+    name.textContent = s.name;
+
+    const val = document.createElement('span');
+    val.className = 'study-val';
+    let v = s.value;
+    if (v === null || v === undefined) v = 'N/A';
+    else if (typeof v === 'object') v = JSON.stringify(v).slice(0, 20);
+    else if (typeof v === 'number') v = v.toFixed ? v.toFixed(2) : v;
+    val.textContent = v;
+
+    row.appendChild(icon); row.appendChild(name); row.appendChild(val);
+    list.appendChild(row);
+  });
+}
+
+// ── Macro overlay ──────────────────────────────────────────────────────────────
+async function loadMacro(seriesId) {
+  if (!seriesId) { macroLineSeries.setData([]); return; }
+  const r = await fetch(`${API}/macro/${seriesId}`);
+  const data = await r.json();
+  macroLineSeries.setData(data);
+  macroChart.timeScale().fitContent();
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+function setDefaultDates() {
+  const end = new Date();
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 2);
+  document.getElementById('date-end').value = end.toISOString().slice(0, 10);
+  document.getElementById('date-start').value = start.toISOString().slice(0, 10);
+}
+
+// ── Wiring ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  initChart();
+  setDefaultDates();
+  loadInstruments();
+
+  document.getElementById('sym-select').addEventListener('change', loadBars);
+  document.getElementById('tf-select').addEventListener('change', loadBars);
+  document.getElementById('analyze-btn').addEventListener('click', runAnalyze);
+  document.getElementById('macro-select').addEventListener('change', e => loadMacro(e.target.value));
+  document.getElementById('backfill-btn').addEventListener('click', triggerBackfill);
+  pollBackfillStatus();
+});
+
+async function triggerBackfill() {
+  const r = await fetch(`${API}/backfill/start`, { method: 'POST' });
+  const d = await r.json();
+  setStatus(d.status === 'started' ? 'Backfill started in server background…' : 'Backfill already running');
+  pollBackfillStatus();
+}
+
+async function pollBackfillStatus() {
+  try {
+    const r = await fetch(`${API}/backfill/status`);
+    const d = await r.json();
+    const btn = document.getElementById('backfill-btn');
+    if (d.running) {
+      btn.classList.add('running');
+      btn.title = d.recent_log.slice(-3).join('\n');
+      setTimeout(pollBackfillStatus, 10000);
+    } else {
+      btn.classList.remove('running');
+      btn.title = 'Start BTC backfill in server background';
+    }
+  } catch (_) {}
+}
+</script>
+</body>
+</html>
