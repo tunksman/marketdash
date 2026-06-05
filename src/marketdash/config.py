@@ -42,7 +42,7 @@ MACRO_SERIES = [
     ("SP500",           "S&P 500",                            "equity",     "fred", "D",  "Index"),
     ("DTWEXBGS",        "Broad Trade-Weighted USD",           "fx",         "fred", "D",  "Index Jan 2006=100"),
     ("DCOILWTICO",      "WTI Crude Oil",                      "commodity",  "fred", "D",  "Dollars per Barrel"),
-    ("GOLDAMGBD228NLBM","Gold LBMA USD",                      "commodity",  "fred", "D",  "U.S. Dollars per Troy Ounce"),
+    ("DFII10",           "10Y TIPS Real Yield",                "rates",      "fred", "D",  "Percent"),
     ("UNRATE",          "Unemployment Rate",                  "labor",      "fred", "M",  "Percent"),
 ]
 

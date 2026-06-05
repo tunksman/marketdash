@@ -203,6 +203,44 @@ def backfill_status():
     }
 
 
+# ── Incremental update ────────────────────────────────────────────────────────
+
+_update_state: dict = {"running": False, "result": None}
+_update_lock = threading.Lock()
+
+
+def _run_update_thread():
+    from .ingest import update_incremental
+    _update_state["running"] = True
+    _update_state["result"] = None
+    try:
+        result = update_incremental(verbose=False)
+        _update_state["result"] = result
+    except Exception as e:
+        _update_state["result"] = {"error": str(e)}
+    finally:
+        _update_state["running"] = False
+
+
+@app.post("/update")
+def update_endpoint():
+    """Incremental update: BTC daily dumps + equity refresh. Idempotent."""
+    with _update_lock:
+        if _update_state["running"]:
+            return {"status": "already_running"}
+        t = threading.Thread(target=_run_update_thread, daemon=True)
+        t.start()
+    return {"status": "started"}
+
+
+@app.get("/update/status")
+def update_status():
+    return {
+        "running": _update_state["running"],
+        "result": _jsonify(_update_state["result"]),
+    }
+
+
 # ── Macro seed (runs in-process, same as backfill) ────────────────────────────
 
 _macro_state: dict = {"running": False, "log": [], "failed": []}
@@ -213,7 +251,7 @@ def _run_macro_thread():
     from .config import MACRO_SERIES
     from .db import connect as _connect
     from .sources.fred import FredSource
-    import io, contextlib
+    import time as _time
 
     _macro_state["running"] = True
     _macro_state["log"] = []
@@ -221,7 +259,9 @@ def _run_macro_thread():
     src = FredSource()
     con = _connect()
 
-    for series_id, name, *_ in MACRO_SERIES:
+    for i, (series_id, name, *_) in enumerate(MACRO_SERIES):
+        if i > 0:
+            _time.sleep(3)  # polite inter-series delay to avoid FRED rate limits
         msg = f"  pulling {series_id} ({name}) ... "
         try:
             obs = list(src.iter_observations(series_id))

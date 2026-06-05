@@ -128,6 +128,97 @@ def backfill_btc(symbol: str = "BTCUSDT", instrument_id: int = 1,
     print("BTC backfill complete.")
 
 
+def update_incremental(verbose: bool = True) -> dict:
+    """
+    Incremental daily update for all instruments:
+    - BTC: fetch any missing daily Binance dumps since last ingested date
+    - Equities: re-fetch last 30 days from Twelve Data (idempotent ON CONFLICT)
+    Returns a summary dict.
+    """
+    from .sources.equity_eod import fetch_equity_bars, get_adapter
+
+    init_db()
+    summary: dict = {"btc": {}, "equities": {}}
+    now = datetime.now(timezone.utc)
+    today = now.date()
+
+    # ── BTC daily catch-up ─────────────────────────────────────────────────────
+    symbol = "BTCUSDT"
+    instrument_id = 1
+    con = connect()
+    latest = con.execute(
+        "SELECT max(ts) FROM bar_1m WHERE instrument_id=?", (instrument_id,)
+    ).fetchone()[0]
+    con.close()
+
+    if latest is None:
+        summary["btc"]["status"] = "no_data"
+    else:
+        last_date = (
+            latest.date() if hasattr(latest, "date") else
+            datetime.fromisoformat(str(latest)).date()
+        )
+        start_day = last_date + timedelta(days=1)
+        fetched, skipped, errors = 0, 0, 0
+        day = start_day
+        while day < today:
+            date_str = day.strftime("%Y-%m-%d")
+            if _already_ingested("binance", symbol, "1m", date_str):
+                skipped += 1
+            else:
+                zip_path, checksum_ok = fetch_day(symbol, date_str)
+                if zip_path is None:
+                    errors += 1
+                    _log_ingest("binance", symbol, "1m", date_str, 0, False, "error")
+                else:
+                    bars = read_zip_bars(zip_path, instrument_id)
+                    n = _insert_bars(bars)
+                    _log_ingest("binance", symbol, "1m", date_str, n, checksum_ok, "ok")
+                    fetched += n
+            day += timedelta(days=1)
+        if fetched > 0:
+            _refresh_bar_1d_from_1m(instrument_id, symbol, verbose=False)
+        summary["btc"] = {"from": str(start_day), "fetched_bars": fetched,
+                          "skipped_periods": skipped, "errors": errors}
+
+    # ── Equities ───────────────────────────────────────────────────────────────
+    from .config import EQUITY_SYMBOLS
+    from .db import connect as _connect
+
+    try:
+        adapter = get_adapter()
+    except RuntimeError as e:
+        summary["equities"]["error"] = str(e)
+        return summary
+
+    eq_con = _connect()
+    for sym in EQUITY_SYMBOLS:
+        try:
+            row = eq_con.execute(
+                "SELECT instrument_id FROM instrument WHERE symbol=? AND active=TRUE", (sym,)
+            ).fetchone()
+            if not row:
+                continue
+            eq_id = row[0]
+            bars = fetch_equity_bars(sym, eq_id)
+            if bars:
+                eq_con.executemany("""
+                    INSERT INTO bar_1d
+                        (instrument_id, ts, open, high, low, close, adj_close,
+                         volume, quote_volume, trades)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (instrument_id, ts) DO UPDATE SET
+                        open=excluded.open, high=excluded.high,
+                        low=excluded.low, close=excluded.close,
+                        adj_close=excluded.adj_close, volume=excluded.volume
+                """, bars)
+                summary["equities"][sym] = len(bars)
+        except Exception as e:
+            summary["equities"][sym] = f"error: {e}"
+    eq_con.close()
+    return summary
+
+
 def _refresh_bar_1d_from_1m(instrument_id: int, symbol: str, verbose: bool = True) -> None:
     """Upsert daily bars for crypto from the minute table."""
     if verbose:
