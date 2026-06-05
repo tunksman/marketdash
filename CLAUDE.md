@@ -94,29 +94,43 @@ is ~44,640 (31 days × 24h × 60m), then run the full backfill.
 
 ## Resume State
 
-**Checkpointed:** 2026-06-05 (session 2)
+**Checkpointed:** 2026-06-05 (session 3)
 
 **Last completed:**
-- Smoke-tested BTC 2017-08: 21,360 bars, OHLC sane, idempotency confirmed.
-- Full BTC backfill running in server background (POST /backfill/start) — currently ~43,700 bars, progressing through 2017.
-- Equities seeded: SPY/MU/NVDA (5,000 bars each), SNDK (328 bars from Feb 2025). ✓
-- Macro: M2SL + WALCL seeded (808 + 1,225 rows). DFF and rest failed due to FRED outage — **re-run `seed_macro.py` when FRED recovers**.
-- Dashboard (Phase 1) built and running: FastAPI at `http://localhost:8000`, TradingView candlestick chart, instrument selector, momentum panel, macro overlay, backfill controls.
-- Battery tested live: NVDA → Momentum Intact 62.5%, 25 studies firing correctly.
-- 20/20 tests passing.
+- Volume histogram added to main chart (bottom 18%, green/red candle-matched).
+- Macro overlay line series on main chart (left price scale, dropdown-controlled).
+- POST /seed/macro + GET /seed/macro/status endpoints wired (in-server thread with 3s inter-series delay).
+- POST /refresh/bar1d endpoint — re-aggregates daily bars from minute data (safe during backfill).
+- POST /update + GET /update/status — incremental daily refresh for all instruments.
+- Live backfill log: backfill_btc() now accepts log list for real-time progress via GET /backfill/status.
+- FRED: empty string values handled as None; 404 is non-retryable; GOLDAMGBD228NLBM replaced with DFII10.
+- BTC backfill at ~2018-07 (491K bars), running in background. ~90% of history still needed.
+- Dashboard: NVDA analyze → Momentum Intact 68.8%, 25/25 studies, regime=trending. ✓
+- Dashboard: ↻ 1D button triggers bar1d refresh. Backfill progress shown live in header.
+- All changes pushed to GitHub (tunksman/marketdash).
 
-**Status:** Dashboard is live. Full BTC backfill in progress (hours remaining). FRED macro partial.
+**Status:** Server running at localhost:8000. BTC backfill running in-process (hours remaining). FRED macro partially seeded (M2SL, WALCL, PCEPILFE confirmed; DFF/DGS10/DGS2/VIX timing out — FRED rate-limiting daily series).
 
-**Exact next step:** Wait for BTC backfill to complete (check via GET /backfill/status). Then:
-1. Re-run `python scripts/seed_macro.py` to fill remaining 13 FRED series.
-2. Verify `python scripts/analyze.py BTCUSDT` with full history.
-3. Dashboard: add volume chart pane below candlestick, add macro overlay line on main chart.
-4. (Optional) Add `/update` endpoint to refresh data incrementally.
+**Exact next step:**
+1. Wait for BTC backfill (GET /backfill/status shows progress). After completion run POST /refresh/bar1d to get full daily chart.
+2. Re-trigger POST /seed/macro until DFF/DGS10/DGS2/VIXCLS succeed — FRED may need to be tried at off-peak hours.
+3. Run GET /analyze/BTCUSDT with full history once backfill completes.
+4. (Optional) Add more chart interactivity: crosshair OHLC tooltip, keyboard shortcuts.
+
+**Run the server:**
+```bash
+source .venv/bin/activate
+EQUITY_API_KEY=d0b1f2415e8749809a49649fe186cb48 python scripts/serve.py &
+curl -X POST http://localhost:8000/backfill/start
+curl -X POST http://localhost:8000/seed/macro
+```
 
 **Gotchas:**
 - **DuckDB concurrency:** Run backfill via POST /backfill/start (in-server thread), never as a separate OS process while the server is up — DuckDB file lock will conflict.
 - `db.py` uses `from . import config` (not `from .config import DB_PATH`) so test fixtures can override `config.DB_PATH` at runtime.
 - access.py uses `connect()` not `connect(read_only=True)` — mixing modes in the same process causes DuckDB ConnectionException.
 - Binance `data.binance.vision` monthly dump for 2017-08 has ~21,360 bars (not ~44,640) because BTC/USDT launched Aug 17, not Aug 1.
-- FRED is occasionally rate-limited or down; `seed_macro.py` now skips failed series and reports them.
+- FRED rate-limits large daily series (DFF, DGS10, VIX); retry at off-peak or increase timeout further.
+- bar_1d is only updated by _refresh_bar_1d_from_1m() — call POST /refresh/bar1d mid-backfill to get daily charts.
 - Twelve Data free tier: 800 calls/day. Each symbol costs ~1 call for 5,000-bar history.
+- GOLDAMGBD228NLBM is 404 on FRED; replaced with DFII10 (10Y TIPS real yield) in config.
