@@ -104,23 +104,38 @@ def latest_ts(symbol: str) -> Optional[datetime]:
 
 def data_quality(symbol: str) -> dict:
     """
-    Returns gap/quality metrics for a crypto (1m) instrument.
-    Reports total bars, expected bars (from first to last), and missing count.
+    Returns gap/quality metrics for an instrument.
+    Crypto (1m native): queries bar_1m for minute-level gap analysis.
+    Equities (1d native): queries bar_1d for daily bar count.
     """
     con = connect()
     inst = _get_instrument(con, symbol)
     instrument_id = inst["instrument_id"]
-    row = con.execute("""
-        SELECT
-            count(*)                                                  AS total_bars,
-            min(ts)                                                   AS first_ts,
-            max(ts)                                                   AS last_ts,
-            CAST(epoch(max(ts) - min(ts)) / 60 AS INTEGER) + 1       AS expected_bars,
-            CAST(epoch(max(ts) - min(ts)) / 60 AS INTEGER) + 1
-              - count(*)                                              AS missing_bars
-        FROM bar_1m
-        WHERE instrument_id = ?
-    """, (instrument_id,)).fetchone()
+    native = inst["native_granularity"]
+
+    if native == "1d":
+        row = con.execute("""
+            SELECT
+                count(*)           AS total_bars,
+                min(ts)            AS first_ts,
+                max(ts)            AS last_ts,
+                NULL               AS expected_bars,
+                NULL               AS missing_bars
+            FROM bar_1d
+            WHERE instrument_id = ?
+        """, (instrument_id,)).fetchone()
+    else:
+        row = con.execute("""
+            SELECT
+                count(*)                                                  AS total_bars,
+                min(ts)                                                   AS first_ts,
+                max(ts)                                                   AS last_ts,
+                CAST(epoch(max(ts) - min(ts)) / 60 AS INTEGER) + 1       AS expected_bars,
+                CAST(epoch(max(ts) - min(ts)) / 60 AS INTEGER) + 1
+                  - count(*)                                              AS missing_bars
+            FROM bar_1m
+            WHERE instrument_id = ?
+        """, (instrument_id,)).fetchone()
     con.close()
     return {
         "symbol": symbol,
