@@ -18,7 +18,7 @@ _READ_TIMEOUT = 120
 # Daily FRED series have 20-70 years of history → large CSVs → FRED 504.
 # Limit to post-2010 for daily series to keep download under ~5 KB.
 # Monthly series are small enough to fetch in full.
-_DAILY_START = "2010-01-01"
+_DAILY_START = "2025-01-01"  # FRED downloads at ~800 B/s from this host; keep CSVs tiny
 
 
 class FredSource(MacroSource):
